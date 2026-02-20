@@ -1,0 +1,90 @@
+{
+  "name": "puasa-notch",
+  "productName": "PuasaNotch",
+  "version": "0.2.0",
+  "description": "macOS menubar Ramadan reminders with notch-style overlay",
+  "main": "dist/main/app.js",
+  "type": "commonjs",
+  "private": true,
+  "author": "PuasaNotch",
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -k -n RENDERER,MAIN,ELECTRON \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:main": "tsup --watch --config tsup.config.ts",
+    "dev:electron": "wait-on tcp:5173 file:dist/main/app.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "build:main": "tsup --config tsup.config.ts",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "dist:arm64": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --arm64",
+    "dist:x64": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --x64",
+    "dist": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --x64 --arm64"
+  },
+  "dependencies": {
+    "adhan": "^4.4.3",
+    "electron-store": "^8.2.0",
+    "luxon": "^3.7.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.1",
+    "@types/node": "^25.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.56.0",
+    "@typescript-eslint/parser": "^8.56.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^40.6.0",
+    "electron-builder": "^26.8.1",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "prettier": "^3.8.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18",
+    "wait-on": "^9.0.4"
+  },
+  "build": {
+    "appId": "com.puasanotch.app",
+    "productName": "PuasaNotch",
+    "npmRebuild": false,
+    "files": [
+      "dist/main/**/*",
+      "dist/preload/**/*",
+      "dist/renderer/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
+    },
+    "dmg": {
+      "sign": false
+    }
+  }
+}

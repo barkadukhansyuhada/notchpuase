@@ -1,0 +1,16 @@
+export const IPC_CHANNELS = {
+  settingsGet: 'settings:get',
+  settingsUpdate: 'settings:update',
+  overlayGetSnapshot: 'overlay:get-snapshot',
+  overlaySnapshotUpdated: 'overlay:snapshot-updated',
+  overlayToggleExpanded: 'overlay:toggle-expanded',
+  overlayCollapse: 'overlay:collapse',
+  overlaySetExpandedContentHeight: 'overlay:set-expanded-content-height',
+  scheduleRefresh: 'schedule:refresh',
+  notificationsGetLog: 'notifications:get-log',
+  locationDetectCurrent: 'location:detect-current',
+  locationListCountries: 'location:list-countries',
+  locationListCities: 'location:list-cities',
+  locationGeocodeCity: 'location:geocode-city',
+  locationReverseGeocode: 'location:reverse-geocode',
+} as const;

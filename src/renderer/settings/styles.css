@@ -1,0 +1,145 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f2f3f7;
+  color: #1c2128;
+}
+
+.settings-shell {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+header p {
+  margin-top: 6px;
+  color: #566070;
+}
+
+.message-stack {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.settings-form {
+  display: grid;
+  gap: 16px;
+}
+
+section {
+  background: white;
+  border: 1px solid #d9dee6;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+section h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
+
+input,
+select {
+  border: 1px solid #c6ceda;
+  border-radius: 8px;
+  padding: 8px;
+  background: white;
+}
+
+input[readonly] {
+  background: #f5f7fb;
+  color: #334155;
+}
+
+small {
+  color: #657182;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.location-actions {
+  margin-top: 4px;
+}
+
+button {
+  border: 1px solid #1c4758;
+  border-radius: 10px;
+  padding: 8px 14px;
+  background: #1f5b74;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+button[type='button'] {
+  background: #355a6a;
+  border-color: #2f4f5c;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.message {
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.message.error {
+  background: #fde9ea;
+  border: 1px solid #ecb6bb;
+  color: #962332;
+}
+
+.message.success {
+  background: #e8f6ed;
+  border: 1px solid #b6dec2;
+  color: #205f36;
+}
+
+.log-section ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #3a4554;
+}
+
+.log-section li {
+  margin-bottom: 6px;
+}
