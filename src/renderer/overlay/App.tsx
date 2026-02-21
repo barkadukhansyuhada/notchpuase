@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { COLLAPSED_REMINDER_SIZE, COLLAPSED_SIZE } from '../../shared/overlayLayout';
 import type { OverlaySnapshot, PrayerEvent } from '../../shared/types';
 
 const EVENT_LABELS: Record<PrayerEvent, string> = {
@@ -12,8 +13,6 @@ const EVENT_LABELS: Record<PrayerEvent, string> = {
   isha: 'Isya',
 };
 
-const COLLAPSED_SIZE = { width: 320, height: 59 };
-const COLLAPSED_PROMPT_SIZE = { width: 398, height: 98 };
 const EXPANDED_VERTICAL_PADDING_PX = 24;
 const EXPANDED_SAFE_BOTTOM_PX = 12;
 const NOTCH_UNDER_CONTENT_GAP_PX = 5;
@@ -94,6 +93,17 @@ function formatReminderHeadline(event: PrayerEvent, offsetMinutes: number): stri
   }
 
   return `${label} ${offsetMinutes} menit setelah azan`;
+}
+
+function buildReminderTickerText(
+  event: PrayerEvent,
+  offsetMinutes: number,
+  city: string,
+  eventAt: string,
+  timezone: string,
+  use24Hour: boolean,
+): string {
+  return `${formatReminderHeadline(event, offsetMinutes)} • ${city} • Jadwal ${formatTime(eventAt, timezone, use24Hour)} • `;
 }
 
 function computeCollapsedTextShiftPx(safeTopInsetPx: number): number {
@@ -232,12 +242,12 @@ export function OverlayApp() {
   const use24Hour = snapshot.settings.overlay.use24Hour;
   const reminder = snapshot.activeReminder;
   const isReminderPromptActive = reminder !== null;
-  const collapsedSize = isReminderPromptActive ? COLLAPSED_PROMPT_SIZE : COLLAPSED_SIZE;
+  const activeCollapsedSize = isReminderPromptActive ? COLLAPSED_REMINDER_SIZE : COLLAPSED_SIZE;
   const collapsedClipPath = buildIslandClipPath(
-    collapsedSize.width,
-    collapsedSize.height,
+    activeCollapsedSize.width,
+    activeCollapsedSize.height,
     10,
-    Math.floor(collapsedSize.height / 2) - 2,
+    Math.floor(activeCollapsedSize.height / 2) - 2,
     COLLAPSED_TOP_OVERSCAN_PX,
   );
   const topSpacerPx = snapshot.display.isLikelyNotched
@@ -254,11 +264,22 @@ export function OverlayApp() {
       ? `${COLLAPSED_CONTENT_COMPENSATE_PX}px`
       : '0px',
   } as CSSProperties;
-  const collapsedTitle = isReminderPromptActive
-    ? formatReminderHeadline(reminder.event, reminder.offsetMinutes)
-    : `${snapshot.location.city} • ${
-        EVENT_LABELS[snapshot.nextEvent.event]
-      } • ${formatCountdown(dynamicCountdown)}`;
+  const collapsedTitle = `${snapshot.location.city} • ${
+    EVENT_LABELS[snapshot.nextEvent.event]
+  } • ${formatCountdown(dynamicCountdown)}`;
+  const reminderTickerText = reminder
+    ? buildReminderTickerText(
+        reminder.event,
+        reminder.offsetMinutes,
+        snapshot.location.city,
+        reminder.eventAt,
+        timezone,
+        use24Hour,
+      )
+    : '';
+  const collapsedAriaLabel = reminder
+    ? `${collapsedTitle}. ${formatReminderHeadline(reminder.event, reminder.offsetMinutes)}.`
+    : collapsedTitle;
 
   if (snapshot.overlayState === 'expanded') {
     return (
@@ -333,26 +354,29 @@ export function OverlayApp() {
 
   return (
     <button
-      className={`overlay-shell collapsed-shell collapsed island island-collapsed ${
-        isReminderPromptActive ? 'collapsed-prompt' : ''
-      }`}
+      className={`collapsed-stack ${isReminderPromptActive ? 'has-reminder' : ''}`}
       type="button"
       onClick={() => window.puasaNotch.toggleOverlayExpanded()}
       title="Klik untuk membuka jadwal"
-      aria-label={collapsedTitle}
-      style={collapsedStyle}
+      aria-label={collapsedAriaLabel}
     >
-      {isReminderPromptActive ? (
-        <div className="collapsed-prompt-content">
-          <span className="collapsed-prompt-kicker">Pengingat salat</span>
-          <strong className="collapsed-prompt-title">{collapsedTitle}</strong>
-          <span className="collapsed-prompt-meta">
-            {snapshot.location.city} • {formatTime(reminder.eventAt, timezone, use24Hour)}
-          </span>
-        </div>
-      ) : (
-        <span className="collapsed-text">{collapsedTitle}</span>
-      )}
+      <div
+        className="overlay-shell collapsed-shell collapsed island island-collapsed collapsed-main-shell"
+        style={collapsedStyle}
+      >
+        {isReminderPromptActive ? (
+          <div className="collapsed-marquee-viewport" aria-live="polite">
+            <div className="collapsed-marquee-track">
+              <span className="collapsed-marquee-text">{reminderTickerText}</span>
+              <span className="collapsed-marquee-text" aria-hidden="true">
+                {reminderTickerText}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <span className="collapsed-text">{collapsedTitle}</span>
+        )}
+      </div>
     </button>
   );
 }

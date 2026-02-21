@@ -1,5 +1,10 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'node:path';
+import {
+  COLLAPSED_REMINDER_SIZE,
+  COLLAPSED_SIZE,
+  REMINDER_RESIZE_DURATION_MS,
+} from '../../shared/overlayLayout';
 import type { OverlayDisplayMetrics, OverlaySettings, OverlayState } from '../../shared/types';
 import {
   EXPANDED_FALLBACK_HEIGHT,
@@ -7,8 +12,6 @@ import {
   shouldApplyExpandedMeasuredHeight,
 } from './overlaySizing';
 
-const COLLAPSED_SIZE = { width: 320, height: 59 };
-const COLLAPSED_PROMPT_SIZE = { width: 398, height: 98 };
 const EXPANDED_SIZE = { width: 320, height: EXPANDED_FALLBACK_HEIGHT };
 const OVERLAY_ANIMATION_DURATION_MS = 220;
 const OVERLAY_ANIMATION_INTERVAL_MS = 1000 / 60;
@@ -229,12 +232,26 @@ export class WindowManager {
     }
 
     this.reminderPromptActive = active;
-    if (!this.overlayWindow || this.overlayState !== 'collapsed' || this.isBoundsAnimating) {
+    if (!this.overlayWindow || this.overlayState !== 'collapsed') {
       return;
     }
 
-    this.overlayWindow.setBounds(this.getTargetBoundsForState('collapsed'), false);
-    this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    const targetBounds = this.getTargetBoundsForState('collapsed');
+
+    if (!this.overlayWindow.isVisible()) {
+      this.overlayWindow.setBounds(targetBounds, false);
+      this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+      return;
+    }
+
+    this.animateOverlayBoundsTo(
+      targetBounds,
+      () => {
+        this.overlayWindow?.setBounds(targetBounds, false);
+        this.overlayWindow?.setAlwaysOnTop(true, 'screen-saver', 1);
+      },
+      REMINDER_RESIZE_DURATION_MS,
+    );
   }
 
   public setOverlayState(nextState: OverlayState): void {
@@ -352,7 +369,7 @@ export class WindowManager {
 
   private getSizeForState(state: OverlayState): { width: number; height: number } {
     if (state === 'collapsed' && this.reminderPromptActive) {
-      return COLLAPSED_PROMPT_SIZE;
+      return COLLAPSED_REMINDER_SIZE;
     }
 
     if (state === 'expanded') {
@@ -387,6 +404,7 @@ export class WindowManager {
   private animateOverlayBoundsTo(
     targetBounds: { x: number; y: number; width: number; height: number },
     onComplete: () => void,
+    durationMs: number = OVERLAY_ANIMATION_DURATION_MS,
   ): void {
     if (!this.overlayWindow) {
       onComplete();
@@ -394,10 +412,7 @@ export class WindowManager {
     }
 
     const startBounds = this.overlayWindow.getBounds();
-    const steps = Math.max(
-      1,
-      Math.round(OVERLAY_ANIMATION_DURATION_MS / OVERLAY_ANIMATION_INTERVAL_MS),
-    );
+    const steps = Math.max(1, Math.round(durationMs / OVERLAY_ANIMATION_INTERVAL_MS));
     let step = 0;
 
     this.stopBoundsAnimation();
