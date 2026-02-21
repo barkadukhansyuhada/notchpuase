@@ -4,11 +4,21 @@ import type {
   CountryOption,
   DeepPartial,
   NotificationLogEntry,
+  OverlaySnapshot,
   PrayerMethod,
 } from '../../shared/types';
+import { PRAYER_METHODS } from '../../shared/types';
 
-const METHODS: PrayerMethod[] = ['MWL', 'ISNA', 'Egypt', 'UmmAlQura', 'Karachi'];
+const METHODS: PrayerMethod[] = [...PRAYER_METHODS];
 const FALLBACK_COUNTRIES: CountryOption[] = [{ name: 'Indonesia', code: 'ID' }];
+const METHOD_LABELS: Record<PrayerMethod, string> = {
+  Kemenag: 'Kemenag (Indonesia / SIHAT)',
+  MWL: 'MWL',
+  ISNA: 'ISNA',
+  Egypt: 'Egypt',
+  UmmAlQura: 'Umm Al-Qura',
+  Karachi: 'Karachi',
+};
 
 interface FormState {
   countryName: string;
@@ -30,6 +40,7 @@ interface FormState {
   yOffset: string;
   use24Hour: boolean;
   autoHideOutsideRamadan: boolean;
+  scheduleSyncEnabled: boolean;
   showHijriDate: boolean;
 }
 
@@ -101,6 +112,7 @@ function toFormState(settings: AppSettings, country: CountryOption | null): Form
     yOffset: String(settings.overlay.yOffset),
     use24Hour: settings.overlay.use24Hour,
     autoHideOutsideRamadan: settings.overlay.autoHideOutsideRamadan,
+    scheduleSyncEnabled: settings.scheduleSync.enabled,
     showHijriDate: settings.showHijriDate,
   };
 }
@@ -130,8 +142,18 @@ function toPatch(form: FormState): DeepPartial<AppSettings> {
       use24Hour: form.use24Hour,
       autoHideOutsideRamadan: form.autoHideOutsideRamadan,
     },
+    scheduleSync: {
+      enabled: form.scheduleSyncEnabled,
+      provider: 'kemenagMyQuran',
+    },
     showHijriDate: form.showHijriDate,
   };
+}
+
+function sourceLabel(snapshot: OverlaySnapshot): string {
+  return snapshot.scheduleSource === 'kemenag-online'
+    ? 'Sumber jadwal: Kemenag Online'
+    : 'Sumber jadwal: Offline Lokal (fallback)';
 }
 
 function sortCountries(options: CountryOption[]): CountryOption[] {
@@ -416,8 +438,11 @@ export function SettingsApp() {
       });
       const updatedLog = await window.puasaNotch.getNotificationLog();
       setLogs(updatedLog);
-      setStatus('Settings saved. Lokasi, schedule, dan notifikasi sudah di-refresh.');
-      await window.puasaNotch.refreshSchedule();
+      const refreshed = await window.puasaNotch.refreshSchedule();
+      const syncInfo = refreshed.scheduleSyncStatus.lastError
+        ? ` (${refreshed.scheduleSyncStatus.lastError})`
+        : '';
+      setStatus(`Settings saved. ${sourceLabel(refreshed)}${syncInfo}`);
     } catch (caughtError: unknown) {
       const message = caughtError instanceof Error ? caughtError.message : 'Failed to save settings';
       setError(message);
@@ -431,10 +456,13 @@ export function SettingsApp() {
     setError('');
 
     try {
-      await window.puasaNotch.refreshSchedule();
+      const refreshed = await window.puasaNotch.refreshSchedule();
       const updatedLog = await window.puasaNotch.getNotificationLog();
       setLogs(updatedLog);
-      setStatus('Schedule refreshed.');
+      const syncInfo = refreshed.scheduleSyncStatus.lastError
+        ? ` (${refreshed.scheduleSyncStatus.lastError})`
+        : '';
+      setStatus(`${sourceLabel(refreshed)}${syncInfo}`);
     } catch (caughtError: unknown) {
       const message = caughtError instanceof Error ? caughtError.message : 'Failed to refresh schedule';
       setError(message);
@@ -523,11 +551,26 @@ export function SettingsApp() {
             >
               {METHODS.map((method) => (
                 <option key={method} value={method}>
-                  {method}
+                  {METHOD_LABELS[method]}
                 </option>
               ))}
             </select>
           </label>
+          <small>
+            Untuk Indonesia disarankan gunakan <strong>Kemenag (Indonesia / SIHAT)</strong>.
+          </small>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.scheduleSyncEnabled}
+              onChange={(event) => updateField('scheduleSyncEnabled', event.target.checked)}
+            />
+            Sinkron jadwal Kemenag online (opsional)
+          </label>
+          <small>
+            Saat aktif, app akan ambil jadwal per kota dari sumber Kemenag-compatible. Kalau gagal,
+            otomatis fallback ke hitung offline lokal.
+          </small>
           <label>
             Imsak offset (minutes before Fajr)
             <input

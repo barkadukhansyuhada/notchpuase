@@ -23,6 +23,9 @@
 - `src/main/services/LocationService.ts`
   - `detectCurrentLocation()` with network-provider fallback (`ipapi.co`, `ipwho.is`)
   - `reverseGeocodeLocation(lat, lon)` (`api.bigdatacloud.net`)
+- `src/main/services/KemenagScheduleService.ts`
+  - city id lookup + daily schedule fetch from Kemenag-compatible provider
+  - returns parsed `ComputedDailyTimes` for today/tomorrow
 - `src/main/services/NotificationService.ts`
   - `scheduleAll(now)`
   - `clearAll()`
@@ -53,11 +56,12 @@
 
 ### Settings (`AppSettings`)
 - `location`: city, latitude, longitude, timezone
-- `calculationMethod`: MWL | ISNA | Egypt | UmmAlQura | Karachi
+- `calculationMethod`: Kemenag | MWL | ISNA | Egypt | UmmAlQura | Karachi
 - `imsakOffsetMinutes`: numeric
 - `fastingStartEvent`: imsak | fajr
 - `reminders`: offsets by event (minutes, negative = before)
 - `overlay`: enabled/followMouseDisplay/yOffset/use24Hour/autoHideOutsideRamadan
+- `scheduleSync`: online sync enable + provider (`kemenagMyQuran`)
 - `showHijriDate`: boolean
 
 ### Schedule model
@@ -90,18 +94,26 @@
 
 ## Prayer Time Computation (Offline-First)
 - Core library: `adhan`.
+- Indonesia preset uses `Kemenag` mapping to `adhan.CalculationMethod.Singapore()` (Subuh -20°, Isya -18° baseline).
 - Timezone handling: civil date is derived in configured IANA timezone, then UTC prayer outputs are transformed back to configured timezone.
 - Imsak derived from Fajr via configured offset.
 - Dhuha is derived as `sunrise + 20 minutes`.
 - No network dependency required.
 - Optional network helpers exist only for location convenience; schedule computation remains local.
+- Optional online schedule sync:
+  - enabled only when `scheduleSync.enabled` + `method=Kemenag` + Indonesia timezone.
+  - app fetches city-specific daily times from provider and caches today/tomorrow context.
+  - if provider fails, app automatically falls back to offline computed times.
 
-## Notifications and Reliability
+## Reminder Prompt and Reliability
 - Notification timers are generated for today + tomorrow events.
 - Offsets are applied as minute deltas from event time.
 - Default reminder policy in v0.2:
   - wajib prayers (Subuh/Zuhur/Asar/Maghrib/Isya): `-15,-10,-5,0`
   - non-wajib (Imsak/Syuruq/Dhuha): empty by default
+- Trigger output is rendered in-overlay (Textream-like collapsed prompt expansion), not macOS Notification center.
+- Main process stores `activeReminder` and temporarily switches collapsed size to a larger prompt footprint.
+- Prompt auto-expires after a short duration and overlay returns to normal collapsed size.
 - `powerMonitor` suspend clears timers; resume re-schedules all timers.
 - Day rollover timer re-schedules the next day automatically.
 

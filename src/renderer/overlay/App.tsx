@@ -13,6 +13,7 @@ const EVENT_LABELS: Record<PrayerEvent, string> = {
 };
 
 const COLLAPSED_SIZE = { width: 320, height: 59 };
+const COLLAPSED_PROMPT_SIZE = { width: 398, height: 98 };
 const EXPANDED_VERTICAL_PADDING_PX = 24;
 const EXPANDED_SAFE_BOTTOM_PX = 12;
 const NOTCH_UNDER_CONTENT_GAP_PX = 5;
@@ -82,6 +83,19 @@ function formatEventCountdown(nextAt: string, sourceDate: 'today' | 'tomorrow', 
   return sourceDate === 'tomorrow' ? `Besok ${countdown}` : countdown;
 }
 
+function formatReminderHeadline(event: PrayerEvent, offsetMinutes: number): string {
+  const label = EVENT_LABELS[event];
+  if (offsetMinutes === 0) {
+    return `Azan ${label} sekarang`;
+  }
+
+  if (offsetMinutes < 0) {
+    return `Azan ${label} ${Math.abs(offsetMinutes)} menit lagi`;
+  }
+
+  return `${label} ${offsetMinutes} menit setelah azan`;
+}
+
 function computeCollapsedTextShiftPx(safeTopInsetPx: number): number {
   const shift = safeTopInsetPx - COLLAPSED_TEXT_BASELINE_PX + CONTENT_ONLY_DOWN_NUDGE_PX;
   return Math.max(0, Math.min(COLLAPSED_TEXT_MAX_SHIFT_PX, shift));
@@ -91,7 +105,7 @@ export function OverlayApp() {
   const [snapshot, setSnapshot] = useState<OverlaySnapshot | null>(null);
   const [now, setNow] = useState<Date>(new Date());
   const expandedContentRef = useRef<HTMLDivElement | null>(null);
-  const collapsedClipPath = useMemo(
+  const defaultCollapsedClipPath = useMemo(
     () =>
       buildIslandClipPath(
         COLLAPSED_SIZE.width,
@@ -105,9 +119,9 @@ export function OverlayApp() {
   const baseCollapsedStyle = useMemo(
     () =>
       ({
-        '--island-clip-path': collapsedClipPath,
+        '--island-clip-path': defaultCollapsedClipPath,
       }) as CSSProperties,
-    [collapsedClipPath],
+    [defaultCollapsedClipPath],
   );
 
   useEffect(() => {
@@ -216,6 +230,16 @@ export function OverlayApp() {
 
   const timezone = snapshot.location.timezone;
   const use24Hour = snapshot.settings.overlay.use24Hour;
+  const reminder = snapshot.activeReminder;
+  const isReminderPromptActive = reminder !== null;
+  const collapsedSize = isReminderPromptActive ? COLLAPSED_PROMPT_SIZE : COLLAPSED_SIZE;
+  const collapsedClipPath = buildIslandClipPath(
+    collapsedSize.width,
+    collapsedSize.height,
+    10,
+    Math.floor(collapsedSize.height / 2) - 2,
+    COLLAPSED_TOP_OVERSCAN_PX,
+  );
   const topSpacerPx = snapshot.display.isLikelyNotched
     ? Math.max(
         0,
@@ -225,14 +249,16 @@ export function OverlayApp() {
   const collapsedTextShiftPx = computeCollapsedTextShiftPx(snapshot.display.safeTopInsetPx);
   const collapsedStyle = {
     '--island-clip-path': collapsedClipPath,
-    '--collapsed-text-shift': `${collapsedTextShiftPx}px`,
-    '--collapsed-text-compensate': snapshot.display.isLikelyNotched
+    '--collapsed-content-shift': `${collapsedTextShiftPx}px`,
+    '--collapsed-content-compensate': snapshot.display.isLikelyNotched
       ? `${COLLAPSED_CONTENT_COMPENSATE_PX}px`
       : '0px',
   } as CSSProperties;
-  const collapsedTitle = `${snapshot.location.city} • ${
-    EVENT_LABELS[snapshot.nextEvent.event]
-  } • ${formatCountdown(dynamicCountdown)}`;
+  const collapsedTitle = isReminderPromptActive
+    ? formatReminderHeadline(reminder.event, reminder.offsetMinutes)
+    : `${snapshot.location.city} • ${
+        EVENT_LABELS[snapshot.nextEvent.event]
+      } • ${formatCountdown(dynamicCountdown)}`;
 
   if (snapshot.overlayState === 'expanded') {
     return (
@@ -268,6 +294,15 @@ export function OverlayApp() {
             <span>{snapshot.currentlyFasting ? 'Sedang puasa' : 'Tidak sedang puasa'}</span>
           </div>
 
+          {reminder ? (
+            <div className="expanded-reminder-banner">
+              <strong>{formatReminderHeadline(reminder.event, reminder.offsetMinutes)}</strong>
+              <span>
+                Jadwal: {formatTime(reminder.eventAt, timezone, use24Hour)}
+              </span>
+            </div>
+          ) : null}
+
           <div className="time-list">
             {snapshot.eventRows.map((row) => {
               const isNext =
@@ -298,14 +333,26 @@ export function OverlayApp() {
 
   return (
     <button
-      className="overlay-shell collapsed-shell collapsed island island-collapsed"
+      className={`overlay-shell collapsed-shell collapsed island island-collapsed ${
+        isReminderPromptActive ? 'collapsed-prompt' : ''
+      }`}
       type="button"
       onClick={() => window.puasaNotch.toggleOverlayExpanded()}
       title="Klik untuk membuka jadwal"
-      aria-label={`Event berikutnya ${EVENT_LABELS[snapshot.nextEvent.event]} dalam ${formatCountdown(dynamicCountdown)}`}
+      aria-label={collapsedTitle}
       style={collapsedStyle}
     >
-      <span className="collapsed-text">{collapsedTitle}</span>
+      {isReminderPromptActive ? (
+        <div className="collapsed-prompt-content">
+          <span className="collapsed-prompt-kicker">Pengingat salat</span>
+          <strong className="collapsed-prompt-title">{collapsedTitle}</strong>
+          <span className="collapsed-prompt-meta">
+            {snapshot.location.city} • {formatTime(reminder.eventAt, timezone, use24Hour)}
+          </span>
+        </div>
+      ) : (
+        <span className="collapsed-text">{collapsedTitle}</span>
+      )}
     </button>
   );
 }

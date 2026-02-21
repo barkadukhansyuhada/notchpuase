@@ -32,12 +32,13 @@ PuasaNotch is a macOS menubar app that provides Ramadan/daily prayer reminders a
 
 4. Notifications:
 - Configurable reminder offsets per event
-- macOS native notifications with event/time context
+- In-overlay notch reminder prompt (collapsed island membesar dengan pesan azan/waktu salat)
 - default wajib offsets: `-15,-10,-5,0` for Subuh/Zuhur/Asar/Maghrib/Isya
+- optional online sync jadwal Kemenag per kota (fallback offline otomatis jika gagal)
 
 5. Settings window:
 - Location: city, lat/lon, timezone
-- Calculation method enum: MWL, ISNA, Egypt, UmmAlQura, Karachi
+- Calculation method enum: Kemenag (Indonesia/SIHAT), MWL, ISNA, Egypt, UmmAlQura, Karachi
 - Imsak offset minutes
 - Reminder offsets per event
 - Overlay options:
@@ -78,6 +79,6 @@ PuasaNotch is a macOS menubar app that provides Ramadan/daily prayer reminders a
 - Overlay top-centers below menu bar baseline with user Y offset tuning.
 - Surabaya sample location renders valid daily times.
 - Countdown updates every second in collapsed mode.
-- Notifications fire using configured offsets.
+- Reminder prompt notch fire using configured offsets.
 - Resume from sleep triggers re-sync and correct next event.
 - `npm test` passes.

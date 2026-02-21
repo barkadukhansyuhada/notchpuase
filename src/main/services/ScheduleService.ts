@@ -20,6 +20,7 @@ import type {
 } from '../../shared/types';
 
 const METHOD_FACTORIES: Record<PrayerMethod, () => CalculationParameters> = {
+  Kemenag: () => CalculationMethod.Singapore(),
   MWL: () => CalculationMethod.MuslimWorldLeague(),
   ISNA: () => CalculationMethod.NorthAmerica(),
   Egypt: () => CalculationMethod.Egyptian(),

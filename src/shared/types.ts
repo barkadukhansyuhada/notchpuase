@@ -1,5 +1,7 @@
-export const PRAYER_METHODS = ['MWL', 'ISNA', 'Egypt', 'UmmAlQura', 'Karachi'] as const;
+export const PRAYER_METHODS = ['Kemenag', 'MWL', 'ISNA', 'Egypt', 'UmmAlQura', 'Karachi'] as const;
 export type PrayerMethod = (typeof PRAYER_METHODS)[number];
+export type ScheduleSyncProvider = 'kemenagMyQuran';
+export type ScheduleSource = 'offline-local' | 'kemenag-online';
 
 export const PRAYER_EVENTS = [
   'imsak',
@@ -61,6 +63,11 @@ export interface OverlaySettings {
   autoHideOutsideRamadan: boolean;
 }
 
+export interface ScheduleSyncSettings {
+  enabled: boolean;
+  provider: ScheduleSyncProvider;
+}
+
 export interface AppSettings {
   location: LocationSettings;
   calculationMethod: PrayerMethod;
@@ -68,6 +75,7 @@ export interface AppSettings {
   fastingStartEvent: FastingStartEvent;
   reminders: ReminderOffsets;
   overlay: OverlaySettings;
+  scheduleSync: ScheduleSyncSettings;
   showHijriDate: boolean;
 }
 
@@ -132,6 +140,13 @@ export interface OverlaySnapshot {
   tomorrow: SerializableDailyTimes;
   nextEvent: SerializableNextEvent;
   eventRows: OverlayEventRow[];
+  activeReminder: OverlayReminderPrompt | null;
+  scheduleSource: ScheduleSource;
+  scheduleSyncStatus: {
+    lastAttemptAt: string | null;
+    lastSuccessAt: string | null;
+    lastError: string | null;
+  };
   display: OverlayDisplayMetrics;
   currentlyFasting: boolean;
   gregorianDate: string;
@@ -150,6 +165,16 @@ export interface NotificationLogEntry {
   reminderOffsetMinutes: number;
   scheduledFor: string;
   firedAt: string;
+}
+
+export interface OverlayReminderPrompt {
+  id: string;
+  event: PrayerEvent;
+  offsetMinutes: number;
+  eventAt: string;
+  scheduledFor: string;
+  firedAt: string;
+  expiresAt: string;
 }
 
 export type DeepPartial<T> = {

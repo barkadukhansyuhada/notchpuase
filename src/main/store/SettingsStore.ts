@@ -1,5 +1,6 @@
 import Store from 'electron-store';
-import type { AppSettings, DeepPartial } from '../../shared/types';
+import { PRAYER_METHODS } from '../../shared/types';
+import type { AppSettings, DeepPartial, PrayerMethod } from '../../shared/types';
 import { DEFAULT_REMINDER_OFFSETS, normalizeReminderOffsets } from './reminderOffsets';
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -9,7 +10,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     longitude: 112.7521,
     timezone: 'Asia/Jakarta',
   },
-  calculationMethod: 'MWL',
+  calculationMethod: 'Kemenag',
   imsakOffsetMinutes: 10,
   fastingStartEvent: 'imsak',
   reminders: normalizeReminderOffsets(DEFAULT_REMINDER_OFFSETS),
@@ -19,6 +20,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     yOffset: 0,
     use24Hour: true,
     autoHideOutsideRamadan: false,
+  },
+  scheduleSync: {
+    enabled: true,
+    provider: 'kemenagMyQuran',
   },
   showHijriDate: true,
 };
@@ -56,6 +61,10 @@ function sanitizeTimezone(timezone: string): string {
   }
 }
 
+function sanitizePrayerMethod(method: PrayerMethod): PrayerMethod {
+  return PRAYER_METHODS.includes(method) ? method : DEFAULT_SETTINGS.calculationMethod;
+}
+
 function sanitizeSettings(input: AppSettings): AppSettings {
   return {
     ...input,
@@ -66,11 +75,16 @@ function sanitizeSettings(input: AppSettings): AppSettings {
       longitude: Math.max(-180, Math.min(180, input.location.longitude)),
       timezone: sanitizeTimezone(input.location.timezone),
     },
+    calculationMethod: sanitizePrayerMethod(input.calculationMethod),
     imsakOffsetMinutes: Math.max(0, Math.min(90, Math.round(input.imsakOffsetMinutes))),
     reminders: normalizeReminderOffsets(input.reminders),
     overlay: {
       ...input.overlay,
       yOffset: Math.max(-64, Math.min(96, Math.round(input.overlay.yOffset))),
+    },
+    scheduleSync: {
+      enabled: Boolean(input.scheduleSync?.enabled),
+      provider: 'kemenagMyQuran',
     },
   };
 }
@@ -108,6 +122,24 @@ export class SettingsStore {
             'reminders',
             normalizeReminderOffsets(migrationStore.get('reminders')),
           );
+        },
+        '0.2.1': (migrationStore) => {
+          const currentMethod = migrationStore.get('calculationMethod');
+          const timezone = migrationStore.get('location.timezone');
+          const indonesiaTimezones = new Set(['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura']);
+
+          if (
+            (currentMethod === undefined || currentMethod === 'MWL') &&
+            typeof timezone === 'string' &&
+            indonesiaTimezones.has(timezone)
+          ) {
+            migrationStore.set('calculationMethod', 'Kemenag');
+          }
+        },
+        '0.2.2': (migrationStore) => {
+          if (!migrationStore.has('scheduleSync')) {
+            migrationStore.set('scheduleSync', DEFAULT_SETTINGS.scheduleSync);
+          }
         },
       },
     });

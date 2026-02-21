@@ -8,6 +8,7 @@ import {
 } from './overlaySizing';
 
 const COLLAPSED_SIZE = { width: 320, height: 59 };
+const COLLAPSED_PROMPT_SIZE = { width: 398, height: 98 };
 const EXPANDED_SIZE = { width: 320, height: EXPANDED_FALLBACK_HEIGHT };
 const OVERLAY_ANIMATION_DURATION_MS = 220;
 const OVERLAY_ANIMATION_INTERVAL_MS = 1000 / 60;
@@ -36,6 +37,7 @@ export class WindowManager {
   private isBoundsAnimating = false;
   private expandedMeasuredHeight: number | null = null;
   private currentDisplayId: number | null = null;
+  private reminderPromptActive = false;
 
   constructor(options: WindowManagerOptions) {
     this.preloadPath = options.preloadPath;
@@ -221,6 +223,20 @@ export class WindowManager {
     this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
   }
 
+  public setReminderPromptActive(active: boolean): void {
+    if (this.reminderPromptActive === active) {
+      return;
+    }
+
+    this.reminderPromptActive = active;
+    if (!this.overlayWindow || this.overlayState !== 'collapsed' || this.isBoundsAnimating) {
+      return;
+    }
+
+    this.overlayWindow.setBounds(this.getTargetBoundsForState('collapsed'), false);
+    this.overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+  }
+
   public setOverlayState(nextState: OverlayState): void {
     this.createOverlayWindow();
     if (!this.overlayWindow) {
@@ -335,6 +351,10 @@ export class WindowManager {
   }
 
   private getSizeForState(state: OverlayState): { width: number; height: number } {
+    if (state === 'collapsed' && this.reminderPromptActive) {
+      return COLLAPSED_PROMPT_SIZE;
+    }
+
     if (state === 'expanded') {
       return {
         width: EXPANDED_SIZE.width,

@@ -3,11 +3,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DateTime } from 'luxon';
 import { IPC_CHANNELS } from '../shared/ipc';
-import type { AppSettings, DeepPartial, OverlaySnapshot } from '../shared/types';
+import type {
+  AppSettings,
+  ComputedDailyTimes,
+  DeepPartial,
+  OverlayReminderPrompt,
+  OverlaySnapshot,
+  ScheduleSource,
+} from '../shared/types';
 import { SettingsStore } from './store/SettingsStore';
 import { ScheduleService } from './services/ScheduleService';
 import { NotificationService } from './services/NotificationService';
+import type { ReminderPromptPayload } from './services/NotificationService';
 import { LocationService } from './services/LocationService';
+import { KemenagScheduleService } from './services/KemenagScheduleService';
 import { WindowManager } from './windows/WindowManager';
 import { TrayManager } from './tray/TrayManager';
 
@@ -15,13 +24,40 @@ let settingsStore: SettingsStore;
 let scheduleService: ScheduleService;
 let notificationService: NotificationService;
 let locationService: LocationService;
+let kemenagScheduleService: KemenagScheduleService;
 let windowManager: WindowManager;
 let trayManager: TrayManager;
 
 let settingsUnsubscribe: (() => void) | null = null;
 let stateUnsubscribe: (() => void) | null = null;
 let snapshotTicker: NodeJS.Timeout | null = null;
+let scheduleSyncInterval: NodeJS.Timeout | null = null;
+let activeReminderPrompt: OverlayReminderPrompt | null = null;
+let reminderPromptTimer: NodeJS.Timeout | null = null;
 const FIRST_LAUNCH_MARKER_FILE = 'first-launch-complete';
+const OVERLAY_PROMPT_DURATION_MS = 16_000;
+const SCHEDULE_SYNC_INTERVAL_MS = 30 * 60_000;
+const INDONESIA_TIMEZONES = new Set(['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura']);
+
+interface CachedScheduleContext {
+  settingsKey: string;
+  todayDate: string;
+  tomorrowDate: string;
+  source: ScheduleSource;
+  today: ComputedDailyTimes;
+  tomorrow: ComputedDailyTimes;
+}
+
+let cachedScheduleContext: CachedScheduleContext | null = null;
+const scheduleSyncStatus: {
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+} = {
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastError: null,
+};
 
 function resolveRendererTarget(page: 'overlay.html' | 'settings.html'): string {
   const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -32,22 +68,109 @@ function resolveRendererTarget(page: 'overlay.html' | 'settings.html'): string {
   return path.join(__dirname, '..', 'renderer', page);
 }
 
-function buildOverlaySnapshot(now: Date = new Date()): OverlaySnapshot {
-  const settings = settingsStore.get();
-  const timezone = settings.location.timezone;
+function buildSettingsScheduleKey(settings: AppSettings): string {
+  return [
+    settings.location.city.trim().toLowerCase(),
+    settings.location.latitude.toFixed(5),
+    settings.location.longitude.toFixed(5),
+    settings.location.timezone,
+    settings.calculationMethod,
+    settings.imsakOffsetMinutes,
+    settings.scheduleSync.enabled ? '1' : '0',
+    settings.scheduleSync.provider,
+  ].join('|');
+}
 
-  const todayTimes = scheduleService.computeDailyTimes(
+function computeOfflineScheduleContext(now: Date, settings: AppSettings): CachedScheduleContext {
+  const timezone = settings.location.timezone;
+  const today = scheduleService.computeDailyTimes(
     now,
     settings.location,
     settings.calculationMethod,
     settings.imsakOffsetMinutes,
   );
-  const tomorrowTimes = scheduleService.computeDailyTimes(
+  const tomorrow = scheduleService.computeDailyTimes(
     scheduleService.getTomorrowReferenceDate(now, timezone),
     settings.location,
     settings.calculationMethod,
     settings.imsakOffsetMinutes,
   );
+
+  return {
+    settingsKey: buildSettingsScheduleKey(settings),
+    todayDate: today.date,
+    tomorrowDate: tomorrow.date,
+    source: 'offline-local',
+    today,
+    tomorrow,
+  };
+}
+
+function isScheduleSyncEligible(settings: AppSettings): boolean {
+  return settings.scheduleSync.enabled &&
+    settings.scheduleSync.provider === 'kemenagMyQuran' &&
+    settings.calculationMethod === 'Kemenag' &&
+    INDONESIA_TIMEZONES.has(settings.location.timezone);
+}
+
+function getCurrentScheduleContext(now: Date, settings: AppSettings): CachedScheduleContext {
+  const offlineContext = computeOfflineScheduleContext(now, settings);
+  if (!cachedScheduleContext) {
+    return offlineContext;
+  }
+
+  const expectedKey = buildSettingsScheduleKey(settings);
+  const isValidForNow = cachedScheduleContext.settingsKey === expectedKey &&
+    cachedScheduleContext.todayDate === offlineContext.todayDate &&
+    cachedScheduleContext.tomorrowDate === offlineContext.tomorrowDate;
+
+  if (!isValidForNow) {
+    return offlineContext;
+  }
+
+  return cachedScheduleContext;
+}
+
+async function syncKemenagScheduleContext(now: Date = new Date()): Promise<void> {
+  const settings = settingsStore.get();
+  if (!isScheduleSyncEligible(settings)) {
+    cachedScheduleContext = null;
+    scheduleSyncStatus.lastError = null;
+    return;
+  }
+
+  scheduleSyncStatus.lastAttemptAt = now.toISOString();
+
+  try {
+    const synced = await kemenagScheduleService.fetchTodayAndTomorrow(now, settings.location);
+    cachedScheduleContext = {
+      settingsKey: buildSettingsScheduleKey(settings),
+      todayDate: synced.today.date,
+      tomorrowDate: synced.tomorrow.date,
+      source: 'kemenag-online',
+      today: synced.today,
+      tomorrow: synced.tomorrow,
+    };
+    scheduleSyncStatus.lastSuccessAt = now.toISOString();
+    scheduleSyncStatus.lastError = null;
+  } catch (error: unknown) {
+    scheduleSyncStatus.lastError =
+      error instanceof Error ? error.message : 'Sinkron Kemenag gagal (unknown error).';
+    cachedScheduleContext = null;
+  }
+}
+
+function buildOverlaySnapshot(now: Date = new Date()): OverlaySnapshot {
+  if (activeReminderPrompt && new Date(activeReminderPrompt.expiresAt).getTime() <= now.getTime()) {
+    activeReminderPrompt = null;
+    windowManager.setReminderPromptActive(false);
+  }
+
+  const settings = settingsStore.get();
+  const timezone = settings.location.timezone;
+  const scheduleContext = getCurrentScheduleContext(now, settings);
+  const todayTimes = scheduleContext.today;
+  const tomorrowTimes = scheduleContext.tomorrow;
 
   const nextEvent = scheduleService.getNextEvent(now, todayTimes, tomorrowTimes);
   const eventRows = scheduleService.buildOverlayEventRows(now, todayTimes, tomorrowTimes);
@@ -71,6 +194,11 @@ function buildOverlaySnapshot(now: Date = new Date()): OverlaySnapshot {
     tomorrow: scheduleService.serializeDailyTimes(tomorrowTimes),
     nextEvent: scheduleService.serializeNextEvent(nextEvent),
     eventRows,
+    activeReminder: activeReminderPrompt,
+    scheduleSource: scheduleContext.source,
+    scheduleSyncStatus: {
+      ...scheduleSyncStatus,
+    },
     display,
     currentlyFasting: scheduleService.isCurrentlyFasting(
       now,
@@ -99,10 +227,14 @@ function publishOverlaySnapshot(): void {
 function applyOverlayPolicy(now: Date = new Date()): void {
   const settings = settingsStore.get();
   const currentState = windowManager.getOverlayState();
+  const hasActivePrompt =
+    activeReminderPrompt !== null &&
+    new Date(activeReminderPrompt.expiresAt).getTime() > now.getTime();
 
   const shouldBeVisible =
     settings.overlay.enabled &&
-    (!settings.overlay.autoHideOutsideRamadan ||
+    (hasActivePrompt ||
+      !settings.overlay.autoHideOutsideRamadan ||
       scheduleService.isRamadan(now, settings.location.timezone));
 
   if (shouldBeVisible && currentState === 'hidden') {
@@ -114,7 +246,58 @@ function applyOverlayPolicy(now: Date = new Date()): void {
   trayManager.setOverlayEnabled(windowManager.getOverlayState() !== 'hidden');
 }
 
-function resyncScheduleAndSnapshot(now: Date = new Date()): void {
+function clearOverlayReminderPrompt(promptId?: string): void {
+  if (promptId && activeReminderPrompt?.id !== promptId) {
+    return;
+  }
+
+  activeReminderPrompt = null;
+  windowManager.setReminderPromptActive(false);
+
+  if (reminderPromptTimer) {
+    clearTimeout(reminderPromptTimer);
+    reminderPromptTimer = null;
+  }
+
+  applyOverlayPolicy(new Date());
+  publishOverlaySnapshot();
+}
+
+function showOverlayReminderPrompt(payload: ReminderPromptPayload): void {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + OVERLAY_PROMPT_DURATION_MS);
+
+  activeReminderPrompt = {
+    id: payload.id,
+    event: payload.event,
+    offsetMinutes: payload.offsetMinutes,
+    eventAt: payload.eventAt,
+    scheduledFor: payload.scheduledFor,
+    firedAt: payload.firedAt,
+    expiresAt: expiresAt.toISOString(),
+  };
+
+  windowManager.setReminderPromptActive(true);
+
+  const settings = settingsStore.get();
+  if (settings.overlay.enabled && windowManager.getOverlayState() === 'hidden') {
+    windowManager.setOverlayState('collapsed');
+  }
+
+  if (reminderPromptTimer) {
+    clearTimeout(reminderPromptTimer);
+  }
+
+  reminderPromptTimer = setTimeout(() => {
+    clearOverlayReminderPrompt(payload.id);
+  }, OVERLAY_PROMPT_DURATION_MS);
+
+  applyOverlayPolicy(now);
+  publishOverlaySnapshot();
+}
+
+async function resyncScheduleAndSnapshot(now: Date = new Date()): Promise<void> {
+  await syncKemenagScheduleContext(now);
   notificationService.scheduleAll(now);
   applyOverlayPolicy(now);
   publishOverlaySnapshot();
@@ -172,8 +355,8 @@ function wireIpcHandlers(): void {
     windowManager.setExpandedMeasuredHeight(height);
   });
 
-  ipcMain.handle(IPC_CHANNELS.scheduleRefresh, () => {
-    resyncScheduleAndSnapshot(new Date());
+  ipcMain.handle(IPC_CHANNELS.scheduleRefresh, async () => {
+    await resyncScheduleAndSnapshot(new Date());
     return buildOverlaySnapshot(new Date());
   });
 
@@ -205,10 +388,11 @@ function wireIpcHandlers(): void {
   );
 }
 
-function boot(): void {
+async function boot(): Promise<void> {
   settingsStore = new SettingsStore();
   scheduleService = new ScheduleService();
   locationService = new LocationService();
+  kemenagScheduleService = new KemenagScheduleService();
 
   const preloadPath = path.join(__dirname, '..', 'preload', 'index.js');
   windowManager = new WindowManager({
@@ -220,7 +404,9 @@ function boot(): void {
 
   trayManager = new TrayManager({
     onToggleOverlay: toggleOverlayFromTray,
-    onRefreshSchedule: () => resyncScheduleAndSnapshot(new Date()),
+    onRefreshSchedule: () => {
+      void resyncScheduleAndSnapshot(new Date());
+    },
     onOpenSettings: () => windowManager.openSettingsWindow(),
     onQuit: () => app.quit(),
   });
@@ -228,9 +414,22 @@ function boot(): void {
   notificationService = new NotificationService({
     scheduleService,
     getSettings: () => settingsStore.get(),
+    resolveScheduleContext: (now, settings) => {
+      const context = getCurrentScheduleContext(now, settings);
+      return {
+        today: context.today,
+        tomorrow: context.tomorrow,
+      };
+    },
     onRemindersChanged: () => {
+      void syncKemenagScheduleContext(new Date()).then(() => {
+        notificationService.scheduleAll(new Date());
+      });
       applyOverlayPolicy(new Date());
       publishOverlaySnapshot();
+    },
+    onReminderTriggered: (payload) => {
+      showOverlayReminderPrompt(payload);
     },
   });
 
@@ -240,7 +439,7 @@ function boot(): void {
 
   settingsUnsubscribe = settingsStore.subscribe((settings) => {
     windowManager.setOverlaySettings(settings.overlay);
-    resyncScheduleAndSnapshot(new Date());
+    void resyncScheduleAndSnapshot(new Date());
   });
 
   stateUnsubscribe = windowManager.onOverlayStateChanged((state) => {
@@ -253,7 +452,14 @@ function boot(): void {
     publishOverlaySnapshot();
   }, 30_000);
 
-  resyncScheduleAndSnapshot(new Date());
+  scheduleSyncInterval = setInterval(() => {
+    void syncKemenagScheduleContext(new Date()).then(() => {
+      notificationService.scheduleAll(new Date());
+      publishOverlaySnapshot();
+    });
+  }, SCHEDULE_SYNC_INTERVAL_MS);
+
+  await resyncScheduleAndSnapshot(new Date());
   maybeShowSettingsOnFirstLaunch();
 }
 
@@ -264,6 +470,16 @@ function cleanup(): void {
   if (snapshotTicker) {
     clearInterval(snapshotTicker);
     snapshotTicker = null;
+  }
+
+  if (scheduleSyncInterval) {
+    clearInterval(scheduleSyncInterval);
+    scheduleSyncInterval = null;
+  }
+
+  if (reminderPromptTimer) {
+    clearTimeout(reminderPromptTimer);
+    reminderPromptTimer = null;
   }
 
   notificationService?.clearAll();
@@ -282,9 +498,9 @@ if (!gotLock) {
 
   void app
     .whenReady()
-    .then(() => {
+    .then(async () => {
       app.dock?.hide();
-      boot();
+      await boot();
     })
     .catch((error: unknown) => {
       console.error('Failed to boot PuasaNotch', error);

@@ -6,10 +6,13 @@ PuasaNotch adalah aplikasi menubar macOS (Electron + TypeScript) dengan overlay 
 - Tray menu: `Toggle Overlay`, `Refresh Schedule`, `Open Settings`, `Quit`.
 - Overlay notch:
   - collapsed: ringkas event berikut + countdown
+  - collapsed-prompt: otomatis membesar saat reminder aktif (`15/10/5/now`)
   - expanded: daftar event harian + countdown per baris
 - Event harian: `Sahur/Imsak`, `Subuh`, `Syuruq`, `Dhuha`, `Zuhur`, `Asar`, `Maghrib/Iftar`, `Isya`.
+- Metode kalkulasi termasuk `Kemenag (Indonesia/SIHAT)` untuk akurasi Indonesia.
 - Reminder default sholat wajib: `-15, -10, -5, 0` menit.
 - Hitung jadwal offline (`adhan` + `luxon`), tidak wajib API eksternal.
+- Opsi sinkron online Kemenag-compatible per kota (`MyQuran`) dengan fallback otomatis ke offline bila gagal.
 - Settings lokasi menggunakan dropdown `Negara -> Kota` (tanpa ketik bebas), lalu lat/lon/timezone auto.
 - Auto resync saat sleep/resume dan pergantian hari.
 
@@ -86,6 +89,8 @@ open /Applications/PuasaNotch.app
 3. Pastikan lat/lon/timezone terisi otomatis.
 4. Klik `Save Settings`.
 5. Atur reminder dan opsi overlay sesuai kebutuhan.
+6. Untuk Indonesia, pilih method `Kemenag (Indonesia / SIHAT)`.
+7. (Opsional) aktifkan `Sinkron jadwal Kemenag online` untuk ambil jadwal per kota dari provider online.
 
 ## Troubleshooting
 - Settings mentok di `Loading settings...`:
@@ -98,10 +103,13 @@ open /Applications/PuasaNotch.app
 - Overlay tidak menempel notch:
   - atur `Y offset fine tune`.
   - nonaktifkan `Follow mouse display` jika pakai monitor eksternal.
-- Notifikasi tidak muncul:
-  - aktifkan izin notifikasi app di macOS Settings.
+- Reminder tidak muncul sebagai popup notch:
+  - pastikan `Overlay Enabled` aktif.
+  - cek offset reminder di Settings (default wajib: `-15,-10,-5,0`).
 - Jadwal terasa salah:
   - cek negara/kota yang dipilih.
+  - pastikan method sudah `Kemenag (Indonesia / SIHAT)` untuk kota Indonesia.
+  - jika online sync aktif dan gagal network, app fallback ke offline (cek status pada pesan `Refresh Schedule` di Settings).
   - klik `Refresh Schedule`.
 
 ## Notch Limitation (Electron)
