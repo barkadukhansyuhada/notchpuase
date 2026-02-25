@@ -1,4 +1,4 @@
-import { powerMonitor } from 'electron';
+import { Notification, powerMonitor } from 'electron';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'node:crypto';
 import { PRAYER_EVENT_ORDER } from '../../shared/types';
@@ -11,6 +11,18 @@ import type {
 import type { ScheduleService } from './ScheduleService';
 
 const MAX_TIMER_MS = 2_147_483_647;
+const MACOS_REMINDER_SOUND = 'Glass';
+
+const EVENT_LABELS: Record<PrayerEvent, string> = {
+  imsak: 'Sahur / Imsak',
+  fajr: 'Subuh',
+  sunrise: 'Syuruq',
+  dhuha: 'Dhuha',
+  dhuhr: 'Zuhur',
+  asr: 'Asar',
+  maghrib: 'Maghrib / Iftar',
+  isha: 'Isya',
+};
 
 interface NotificationServiceDependencies {
   scheduleService: ScheduleService;
@@ -167,6 +179,8 @@ export class NotificationService {
       this.logs.length = 50;
     }
 
+    this.showNativeNotification(event, eventAt, offsetMinutes);
+
     this.onReminderTriggered?.({
       id,
       event,
@@ -175,5 +189,50 @@ export class NotificationService {
       scheduledFor: scheduledFor.toISOString(),
       firedAt,
     });
+  }
+
+  private showNativeNotification(event: PrayerEvent, eventAt: Date, offsetMinutes: number): void {
+    if (!Notification.isSupported()) {
+      return;
+    }
+
+    const settings = this.getSettings();
+    const eventLabel = EVENT_LABELS[event];
+    const eventTime = new Intl.DateTimeFormat([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: !settings.overlay.use24Hour,
+      timeZone: settings.location.timezone,
+    }).format(eventAt);
+
+    const isNow = offsetMinutes === 0;
+    const isBefore = offsetMinutes < 0;
+    const headline = isNow
+      ? `Waktu ${eventLabel}`
+      : isBefore
+        ? `Pengingat ${eventLabel}`
+        : `${eventLabel} (setelah azan)`;
+    const body = isNow
+      ? `Azan ${eventLabel} sekarang • ${eventTime}`
+      : isBefore
+        ? `Azan ${eventLabel} ${Math.abs(offsetMinutes)} menit lagi • ${eventTime}`
+        : `${eventLabel} ${offsetMinutes} menit setelah azan • ${eventTime}`;
+
+    try {
+      const notificationOptions: Electron.NotificationConstructorOptions = {
+        title: headline,
+        body,
+        silent: false,
+      };
+
+      if (process.platform === 'darwin') {
+        notificationOptions.sound = MACOS_REMINDER_SOUND;
+      }
+
+      const notification = new Notification(notificationOptions);
+      notification.show();
+    } catch {
+      // Keep reminder flow running even if local notification display fails.
+    }
   }
 }
