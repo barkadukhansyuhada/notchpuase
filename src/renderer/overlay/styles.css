@@ -74,7 +74,7 @@ button.overlay-shell {
   top: 0;
   left: 0;
   width: 100%;
-  height: 59px;
+  height: var(--collapsed-shell-height, 59px);
   transform: none;
 }
 

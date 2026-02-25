@@ -1,6 +1,16 @@
 import Store from 'electron-store';
 import { PRAYER_METHODS } from '../../shared/types';
 import type { AppSettings, DeepPartial, PrayerMethod } from '../../shared/types';
+import {
+  DEFAULT_COLLAPSED_CONTENT_OFFSET_Y,
+  DEFAULT_COLLAPSED_REMINDER_SIZE,
+  DEFAULT_COLLAPSED_SIZE,
+  normalizeCollapsedContentOffsetY,
+  normalizeCollapsedHeight,
+  normalizeCollapsedReminderWidth,
+  normalizeCollapsedWidth,
+  normalizeOverlayYOffset,
+} from '../../shared/overlayLayout';
 import { DEFAULT_REMINDER_OFFSETS, normalizeReminderOffsets } from './reminderOffsets';
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -18,6 +28,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     enabled: true,
     followMouseDisplay: true,
     yOffset: 0,
+    collapsedWidth: DEFAULT_COLLAPSED_SIZE.width,
+    collapsedReminderWidth: DEFAULT_COLLAPSED_REMINDER_SIZE.width,
+    collapsedHeight: DEFAULT_COLLAPSED_SIZE.height,
+    collapsedContentOffsetY: DEFAULT_COLLAPSED_CONTENT_OFFSET_Y,
     use24Hour: true,
     autoHideOutsideRamadan: false,
   },
@@ -80,7 +94,14 @@ function sanitizeSettings(input: AppSettings): AppSettings {
     reminders: normalizeReminderOffsets(input.reminders),
     overlay: {
       ...input.overlay,
-      yOffset: Math.max(-64, Math.min(96, Math.round(input.overlay.yOffset))),
+      yOffset: normalizeOverlayYOffset(input.overlay.yOffset),
+      collapsedWidth: normalizeCollapsedWidth(input.overlay.collapsedWidth),
+      collapsedHeight: normalizeCollapsedHeight(input.overlay.collapsedHeight),
+      collapsedReminderWidth: normalizeCollapsedReminderWidth(
+        input.overlay.collapsedReminderWidth,
+        normalizeCollapsedWidth(input.overlay.collapsedWidth),
+      ),
+      collapsedContentOffsetY: normalizeCollapsedContentOffsetY(input.overlay.collapsedContentOffsetY),
     },
     scheduleSync: {
       enabled: Boolean(input.scheduleSync?.enabled),
@@ -139,6 +160,32 @@ export class SettingsStore {
         '0.2.2': (migrationStore) => {
           if (!migrationStore.has('scheduleSync')) {
             migrationStore.set('scheduleSync', DEFAULT_SETTINGS.scheduleSync);
+          }
+        },
+        '0.2.3': (migrationStore) => {
+          const currentOverlay = migrationStore.get('overlay');
+          if (!isPlainObject(currentOverlay)) {
+            migrationStore.set('overlay', DEFAULT_SETTINGS.overlay);
+            return;
+          }
+
+          if (!migrationStore.has('overlay.collapsedWidth')) {
+            migrationStore.set('overlay.collapsedWidth', DEFAULT_SETTINGS.overlay.collapsedWidth);
+          }
+          if (!migrationStore.has('overlay.collapsedReminderWidth')) {
+            migrationStore.set(
+              'overlay.collapsedReminderWidth',
+              DEFAULT_SETTINGS.overlay.collapsedReminderWidth,
+            );
+          }
+          if (!migrationStore.has('overlay.collapsedHeight')) {
+            migrationStore.set('overlay.collapsedHeight', DEFAULT_SETTINGS.overlay.collapsedHeight);
+          }
+          if (!migrationStore.has('overlay.collapsedContentOffsetY')) {
+            migrationStore.set(
+              'overlay.collapsedContentOffsetY',
+              DEFAULT_SETTINGS.overlay.collapsedContentOffsetY,
+            );
           }
         },
       },

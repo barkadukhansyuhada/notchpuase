@@ -59,9 +59,24 @@ export interface OverlaySettings {
   enabled: boolean;
   followMouseDisplay: boolean;
   yOffset: number;
+  collapsedWidth: number;
+  collapsedReminderWidth: number;
+  collapsedHeight: number;
+  collapsedContentOffsetY: number;
   use24Hour: boolean;
   autoHideOutsideRamadan: boolean;
 }
+
+export type OverlayPreviewPatch = Partial<
+  Pick<
+    OverlaySettings,
+    | 'yOffset'
+    | 'collapsedWidth'
+    | 'collapsedReminderWidth'
+    | 'collapsedHeight'
+    | 'collapsedContentOffsetY'
+  >
+>;
 
 export interface ScheduleSyncSettings {
   enabled: boolean;

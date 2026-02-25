@@ -93,6 +93,19 @@ small {
   gap: 10px;
 }
 
+.range-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -2px 2px 6px;
+  font-size: 12px;
+  color: #566070;
+}
+
+.range-meta strong {
+  color: #1f2a37;
+}
+
 .location-actions {
   margin-top: 4px;
 }

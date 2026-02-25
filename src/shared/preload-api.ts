@@ -5,6 +5,7 @@ import type {
   DeepPartial,
   GeocodeCityResult,
   NotificationLogEntry,
+  OverlayPreviewPatch,
   OverlaySnapshot,
   ReverseGeocodeResult,
 } from './types';
@@ -16,6 +17,8 @@ export interface PuasaNotchApi {
   onOverlaySnapshot: (listener: (snapshot: OverlaySnapshot) => void) => () => void;
   toggleOverlayExpanded: () => void;
   collapseOverlay: () => void;
+  previewOverlayYOffset: (yOffset: number) => void;
+  previewOverlayLayout: (patch: OverlayPreviewPatch) => void;
   setExpandedContentHeight: (height: number) => void;
   refreshSchedule: () => Promise<OverlaySnapshot>;
   getNotificationLog: () => Promise<NotificationLogEntry[]>;

@@ -8,6 +8,7 @@ import type {
   DeepPartial,
   GeocodeCityResult,
   NotificationLogEntry,
+  OverlayPreviewPatch,
   OverlaySnapshot,
   ReverseGeocodeResult,
 } from '../shared/types';
@@ -42,6 +43,14 @@ const api: PuasaNotchApi = {
 
   collapseOverlay: () => {
     ipcRenderer.send(IPC_CHANNELS.overlayCollapse);
+  },
+
+  previewOverlayYOffset: (yOffset: number) => {
+    ipcRenderer.send(IPC_CHANNELS.overlayPreviewYOffset, yOffset);
+  },
+
+  previewOverlayLayout: (patch: OverlayPreviewPatch) => {
+    ipcRenderer.send(IPC_CHANNELS.overlayPreviewLayout, patch);
   },
 
   setExpandedContentHeight: (height: number) => {

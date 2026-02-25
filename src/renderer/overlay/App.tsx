@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { COLLAPSED_REMINDER_SIZE, COLLAPSED_SIZE } from '../../shared/overlayLayout';
+import { DEFAULT_COLLAPSED_SIZE } from '../../shared/overlayLayout';
 import type { OverlaySnapshot, PrayerEvent } from '../../shared/types';
 
 const EVENT_LABELS: Record<PrayerEvent, string> = {
@@ -18,7 +18,8 @@ const EXPANDED_SAFE_BOTTOM_PX = 12;
 const NOTCH_UNDER_CONTENT_GAP_PX = 5;
 const CONTENT_ONLY_DOWN_NUDGE_PX = 6;
 const COLLAPSED_TEXT_BASELINE_PX = 20;
-const COLLAPSED_TEXT_MAX_SHIFT_PX = 17;
+const COLLAPSED_TEXT_MIN_SHIFT_PX = -16;
+const COLLAPSED_TEXT_MAX_SHIFT_PX = 32;
 const COLLAPSED_TOP_OVERSCAN_PX = 3;
 const COLLAPSED_CONTENT_COMPENSATE_PX = 0;
 
@@ -106,9 +107,10 @@ function buildReminderTickerText(
   return `${formatReminderHeadline(event, offsetMinutes)} • ${city} • Jadwal ${formatTime(eventAt, timezone, use24Hour)} • `;
 }
 
-function computeCollapsedTextShiftPx(safeTopInsetPx: number): number {
-  const shift = safeTopInsetPx - COLLAPSED_TEXT_BASELINE_PX + CONTENT_ONLY_DOWN_NUDGE_PX;
-  return Math.max(0, Math.min(COLLAPSED_TEXT_MAX_SHIFT_PX, shift));
+function computeCollapsedTextShiftPx(safeTopInsetPx: number, contentOffsetY: number): number {
+  const shift =
+    safeTopInsetPx - COLLAPSED_TEXT_BASELINE_PX + CONTENT_ONLY_DOWN_NUDGE_PX + contentOffsetY;
+  return Math.max(COLLAPSED_TEXT_MIN_SHIFT_PX, Math.min(COLLAPSED_TEXT_MAX_SHIFT_PX, shift));
 }
 
 export function OverlayApp() {
@@ -118,10 +120,10 @@ export function OverlayApp() {
   const defaultCollapsedClipPath = useMemo(
     () =>
       buildIslandClipPath(
-        COLLAPSED_SIZE.width,
-        COLLAPSED_SIZE.height,
+        DEFAULT_COLLAPSED_SIZE.width,
+        DEFAULT_COLLAPSED_SIZE.height,
         10,
-        Math.floor(COLLAPSED_SIZE.height / 2) - 2,
+        Math.floor(DEFAULT_COLLAPSED_SIZE.height / 2) - 2,
         COLLAPSED_TOP_OVERSCAN_PX,
       ),
     [],
@@ -242,7 +244,15 @@ export function OverlayApp() {
   const use24Hour = snapshot.settings.overlay.use24Hour;
   const reminder = snapshot.activeReminder;
   const isReminderPromptActive = reminder !== null;
-  const activeCollapsedSize = isReminderPromptActive ? COLLAPSED_REMINDER_SIZE : COLLAPSED_SIZE;
+  const collapsedSize = {
+    width: snapshot.settings.overlay.collapsedWidth,
+    height: snapshot.settings.overlay.collapsedHeight,
+  };
+  const reminderSize = {
+    width: snapshot.settings.overlay.collapsedReminderWidth,
+    height: snapshot.settings.overlay.collapsedHeight,
+  };
+  const activeCollapsedSize = isReminderPromptActive ? reminderSize : collapsedSize;
   const collapsedClipPath = buildIslandClipPath(
     activeCollapsedSize.width,
     activeCollapsedSize.height,
@@ -256,10 +266,14 @@ export function OverlayApp() {
         snapshot.display.safeTopInsetPx + NOTCH_UNDER_CONTENT_GAP_PX,
       )
     : 0;
-  const collapsedTextShiftPx = computeCollapsedTextShiftPx(snapshot.display.safeTopInsetPx);
+  const collapsedTextShiftPx = computeCollapsedTextShiftPx(
+    snapshot.display.safeTopInsetPx,
+    snapshot.settings.overlay.collapsedContentOffsetY,
+  );
   const collapsedStyle = {
     '--island-clip-path': collapsedClipPath,
     '--collapsed-content-shift': `${collapsedTextShiftPx}px`,
+    '--collapsed-shell-height': `${activeCollapsedSize.height}px`,
     '--collapsed-content-compensate': snapshot.display.isLikelyNotched
       ? `${COLLAPSED_CONTENT_COMPENSATE_PX}px`
       : '0px',

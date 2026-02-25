@@ -5,6 +5,8 @@ export const IPC_CHANNELS = {
   overlaySnapshotUpdated: 'overlay:snapshot-updated',
   overlayToggleExpanded: 'overlay:toggle-expanded',
   overlayCollapse: 'overlay:collapse',
+  overlayPreviewYOffset: 'overlay:preview-y-offset',
+  overlayPreviewLayout: 'overlay:preview-layout',
   overlaySetExpandedContentHeight: 'overlay:set-expanded-content-height',
   scheduleRefresh: 'schedule:refresh',
   notificationsGetLog: 'notifications:get-log',

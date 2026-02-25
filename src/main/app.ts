@@ -7,10 +7,18 @@ import type {
   AppSettings,
   ComputedDailyTimes,
   DeepPartial,
+  OverlayPreviewPatch,
   OverlayReminderPrompt,
   OverlaySnapshot,
   ScheduleSource,
 } from '../shared/types';
+import {
+  normalizeCollapsedContentOffsetY,
+  normalizeCollapsedHeight,
+  normalizeCollapsedReminderWidth,
+  normalizeCollapsedWidth,
+  normalizeOverlayYOffset,
+} from '../shared/overlayLayout';
 import { SettingsStore } from './store/SettingsStore';
 import { ScheduleService } from './services/ScheduleService';
 import { NotificationService } from './services/NotificationService';
@@ -66,6 +74,75 @@ function resolveRendererTarget(page: 'overlay.html' | 'settings.html'): string {
   }
 
   return path.join(__dirname, '..', 'renderer', page);
+}
+
+function normalizeOverlayPreviewPatch(
+  patch: OverlayPreviewPatch,
+  base: AppSettings['overlay'],
+): AppSettings['overlay'] | null {
+  if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
+    return null;
+  }
+
+  let didUpdate = false;
+  let nextCollapsedWidth = base.collapsedWidth;
+  let nextCollapsedHeight = base.collapsedHeight;
+  let nextCollapsedReminderWidth = base.collapsedReminderWidth;
+  let nextCollapsedContentOffsetY = base.collapsedContentOffsetY;
+  let nextYOffset = base.yOffset;
+
+  if (typeof patch.collapsedWidth === 'number' && Number.isFinite(patch.collapsedWidth)) {
+    nextCollapsedWidth = normalizeCollapsedWidth(patch.collapsedWidth);
+    didUpdate = true;
+  }
+
+  if (
+    typeof patch.collapsedReminderWidth === 'number' &&
+    Number.isFinite(patch.collapsedReminderWidth)
+  ) {
+    nextCollapsedReminderWidth = normalizeCollapsedReminderWidth(
+      patch.collapsedReminderWidth,
+      nextCollapsedWidth,
+    );
+    didUpdate = true;
+  } else if (nextCollapsedReminderWidth < nextCollapsedWidth) {
+    nextCollapsedReminderWidth = normalizeCollapsedReminderWidth(
+      nextCollapsedReminderWidth,
+      nextCollapsedWidth,
+    );
+    didUpdate = true;
+  }
+
+  if (typeof patch.collapsedHeight === 'number' && Number.isFinite(patch.collapsedHeight)) {
+    nextCollapsedHeight = normalizeCollapsedHeight(patch.collapsedHeight);
+    didUpdate = true;
+  }
+
+  if (
+    typeof patch.collapsedContentOffsetY === 'number' &&
+    Number.isFinite(patch.collapsedContentOffsetY)
+  ) {
+    nextCollapsedContentOffsetY = normalizeCollapsedContentOffsetY(patch.collapsedContentOffsetY);
+    didUpdate = true;
+  }
+
+  if (typeof patch.yOffset === 'number' && Number.isFinite(patch.yOffset)) {
+    nextYOffset = normalizeOverlayYOffset(patch.yOffset);
+    didUpdate = true;
+  }
+
+  if (!didUpdate) {
+    return null;
+  }
+
+  return {
+    ...base,
+    yOffset: nextYOffset,
+    collapsedWidth: nextCollapsedWidth,
+    collapsedReminderWidth: nextCollapsedReminderWidth,
+    collapsedHeight: nextCollapsedHeight,
+    collapsedContentOffsetY: nextCollapsedContentOffsetY,
+  };
 }
 
 function buildSettingsScheduleKey(settings: AppSettings): string {
@@ -208,7 +285,7 @@ function buildOverlaySnapshot(now: Date = new Date()): OverlaySnapshot {
     gregorianDate: todayZoned.toFormat('cccc, dd LLL yyyy'),
     hijriDate,
     settings: {
-      overlay: settings.overlay,
+      overlay: windowManager.getOverlaySettings(),
       fastingStartEvent: settings.fastingStartEvent,
       showHijriDate: settings.showHijriDate,
     },
@@ -348,6 +425,28 @@ function wireIpcHandlers(): void {
 
   ipcMain.on(IPC_CHANNELS.overlayCollapse, () => {
     windowManager.collapseOverlay();
+    publishOverlaySnapshot();
+  });
+
+  ipcMain.on(IPC_CHANNELS.overlayPreviewYOffset, (_event, yOffset: number) => {
+    const current = windowManager.getOverlaySettings();
+    const nextOverlay = normalizeOverlayPreviewPatch({ yOffset }, current);
+    if (!nextOverlay) {
+      return;
+    }
+
+    windowManager.setOverlaySettings(nextOverlay);
+    publishOverlaySnapshot();
+  });
+
+  ipcMain.on(IPC_CHANNELS.overlayPreviewLayout, (_event, patch: OverlayPreviewPatch) => {
+    const current = windowManager.getOverlaySettings();
+    const nextOverlay = normalizeOverlayPreviewPatch(patch, current);
+    if (!nextOverlay) {
+      return;
+    }
+
+    windowManager.setOverlaySettings(nextOverlay);
     publishOverlaySnapshot();
   });
 

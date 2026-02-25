@@ -1,10 +1,6 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'node:path';
-import {
-  COLLAPSED_REMINDER_SIZE,
-  COLLAPSED_SIZE,
-  REMINDER_RESIZE_DURATION_MS,
-} from '../../shared/overlayLayout';
+import { REMINDER_RESIZE_DURATION_MS } from '../../shared/overlayLayout';
 import type { OverlayDisplayMetrics, OverlaySettings, OverlayState } from '../../shared/types';
 import {
   EXPANDED_FALLBACK_HEIGHT,
@@ -59,8 +55,8 @@ export class WindowManager {
     }
 
     this.overlayWindow = new BrowserWindow({
-      width: COLLAPSED_SIZE.width,
-      height: COLLAPSED_SIZE.height,
+      width: this.overlaySettings.collapsedWidth,
+      height: this.overlaySettings.collapsedHeight,
       frame: false,
       transparent: true,
       resizable: false,
@@ -149,6 +145,12 @@ export class WindowManager {
 
   public getOverlayState(): OverlayState {
     return this.overlayState;
+  }
+
+  public getOverlaySettings(): OverlaySettings {
+    return {
+      ...this.overlaySettings,
+    };
   }
 
   public hasOverlayWindow(): boolean {
@@ -369,7 +371,10 @@ export class WindowManager {
 
   private getSizeForState(state: OverlayState): { width: number; height: number } {
     if (state === 'collapsed' && this.reminderPromptActive) {
-      return COLLAPSED_REMINDER_SIZE;
+      return {
+        width: this.overlaySettings.collapsedReminderWidth,
+        height: this.overlaySettings.collapsedHeight,
+      };
     }
 
     if (state === 'expanded') {
@@ -379,7 +384,10 @@ export class WindowManager {
       };
     }
 
-    return COLLAPSED_SIZE;
+    return {
+      width: this.overlaySettings.collapsedWidth,
+      height: this.overlaySettings.collapsedHeight,
+    };
   }
 
   private getTargetBoundsForState(state: OverlayState, displayId?: number) {

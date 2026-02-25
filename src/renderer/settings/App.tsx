@@ -5,9 +5,22 @@ import type {
   DeepPartial,
   NotificationLogEntry,
   OverlaySnapshot,
+  OverlayPreviewPatch,
   PrayerMethod,
 } from '../../shared/types';
 import { PRAYER_METHODS } from '../../shared/types';
+import {
+  COLLAPSED_CONTENT_OFFSET_Y_MAX,
+  COLLAPSED_CONTENT_OFFSET_Y_MIN,
+  COLLAPSED_HEIGHT_MAX,
+  COLLAPSED_HEIGHT_MIN,
+  COLLAPSED_REMINDER_WIDTH_MAX,
+  COLLAPSED_REMINDER_WIDTH_MIN,
+  COLLAPSED_WIDTH_MAX,
+  COLLAPSED_WIDTH_MIN,
+  OVERLAY_Y_OFFSET_MAX,
+  OVERLAY_Y_OFFSET_MIN,
+} from '../../shared/overlayLayout';
 
 const METHODS: PrayerMethod[] = [...PRAYER_METHODS];
 const FALLBACK_COUNTRIES: CountryOption[] = [{ name: 'Indonesia', code: 'ID' }];
@@ -38,6 +51,10 @@ interface FormState {
   overlayEnabled: boolean;
   followMouseDisplay: boolean;
   yOffset: string;
+  collapsedWidth: string;
+  collapsedReminderWidth: string;
+  collapsedHeight: string;
+  collapsedContentOffsetY: string;
   use24Hour: boolean;
   autoHideOutsideRamadan: boolean;
   scheduleSyncEnabled: boolean;
@@ -65,6 +82,36 @@ function parseOffsetString(value: string): number[] {
 function parseNumericInput(value: string): number {
   const normalized = value.trim().replace(',', '.');
   return Number(normalized);
+}
+
+function normalizeOverlayYOffsetInput(value: string): number | null {
+  const parsed = parseNumericInput(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return Math.max(OVERLAY_Y_OFFSET_MIN, Math.min(OVERLAY_Y_OFFSET_MAX, Math.round(parsed)));
+}
+
+function normalizeRangeInput(value: string, min: number, max: number): number | null {
+  const parsed = parseNumericInput(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return Math.max(min, Math.min(max, Math.round(parsed)));
+}
+
+function normalizeCollapsedWidthInput(value: string): number | null {
+  return normalizeRangeInput(value, COLLAPSED_WIDTH_MIN, COLLAPSED_WIDTH_MAX);
+}
+
+function normalizeCollapsedHeightInput(value: string): number | null {
+  return normalizeRangeInput(value, COLLAPSED_HEIGHT_MIN, COLLAPSED_HEIGHT_MAX);
+}
+
+function normalizeCollapsedContentOffsetYInput(value: string): number | null {
+  return normalizeRangeInput(value, COLLAPSED_CONTENT_OFFSET_Y_MIN, COLLAPSED_CONTENT_OFFSET_Y_MAX);
 }
 
 function formatCoordinate(value: number): string {
@@ -110,6 +157,10 @@ function toFormState(settings: AppSettings, country: CountryOption | null): Form
     overlayEnabled: settings.overlay.enabled,
     followMouseDisplay: settings.overlay.followMouseDisplay,
     yOffset: String(settings.overlay.yOffset),
+    collapsedWidth: String(settings.overlay.collapsedWidth),
+    collapsedReminderWidth: String(settings.overlay.collapsedReminderWidth),
+    collapsedHeight: String(settings.overlay.collapsedHeight),
+    collapsedContentOffsetY: String(settings.overlay.collapsedContentOffsetY),
     use24Hour: settings.overlay.use24Hour,
     autoHideOutsideRamadan: settings.overlay.autoHideOutsideRamadan,
     scheduleSyncEnabled: settings.scheduleSync.enabled,
@@ -139,6 +190,10 @@ function toPatch(form: FormState): DeepPartial<AppSettings> {
       enabled: form.overlayEnabled,
       followMouseDisplay: form.followMouseDisplay,
       yOffset: parseNumericInput(form.yOffset),
+      collapsedWidth: parseNumericInput(form.collapsedWidth),
+      collapsedReminderWidth: parseNumericInput(form.collapsedReminderWidth),
+      collapsedHeight: parseNumericInput(form.collapsedHeight),
+      collapsedContentOffsetY: parseNumericInput(form.collapsedContentOffsetY),
       use24Hour: form.use24Hour,
       autoHideOutsideRamadan: form.autoHideOutsideRamadan,
     },
@@ -329,6 +384,10 @@ export function SettingsApp() {
     });
   };
 
+  const previewOverlayLayout = (patch: OverlayPreviewPatch) => {
+    window.puasaNotch.previewOverlayLayout(patch);
+  };
+
   const applyResolvedCoordinates = (latitude: number, longitude: number, timezone: string) => {
     updateField('latitude', formatCoordinate(latitude));
     updateField('longitude', formatCoordinate(longitude));
@@ -468,6 +527,16 @@ export function SettingsApp() {
       setError(message);
     }
   };
+
+  const normalizedYOffset = normalizeOverlayYOffsetInput(form.yOffset) ?? 0;
+  const normalizedCollapsedWidth = normalizeCollapsedWidthInput(form.collapsedWidth) ?? 320;
+  const reminderWidthMin = Math.max(COLLAPSED_REMINDER_WIDTH_MIN, normalizedCollapsedWidth + 24);
+  const normalizedCollapsedReminderWidth =
+    normalizeRangeInput(form.collapsedReminderWidth, reminderWidthMin, COLLAPSED_REMINDER_WIDTH_MAX) ??
+    reminderWidthMin;
+  const normalizedCollapsedHeight = normalizeCollapsedHeightInput(form.collapsedHeight) ?? 59;
+  const normalizedCollapsedContentOffsetY =
+    normalizeCollapsedContentOffsetYInput(form.collapsedContentOffsetY) ?? 0;
 
   return (
     <main className="settings-shell">
@@ -659,12 +728,144 @@ export function SettingsApp() {
           <label>
             Y offset fine tune (px, notch baseline)
             <input
-              type="number"
+              type="range"
+              min={OVERLAY_Y_OFFSET_MIN}
+              max={OVERLAY_Y_OFFSET_MAX}
+              step={1}
               value={form.yOffset}
-              onChange={(event) => updateField('yOffset', event.target.value)}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                updateField('yOffset', nextValue);
+                const normalized = normalizeOverlayYOffsetInput(nextValue);
+                if (normalized !== null) {
+                  previewOverlayLayout({ yOffset: normalized });
+                }
+              }}
             />
           </label>
-          <small>Tip: lower values move the island up, higher values move it down.</small>
+          <div className="range-meta">
+            <span>{OVERLAY_Y_OFFSET_MIN}px</span>
+            <strong>{normalizedYOffset}px</strong>
+            <span>{OVERLAY_Y_OFFSET_MAX}px</span>
+          </div>
+          <label>
+            Collapsed width (px)
+            <input
+              type="range"
+              min={COLLAPSED_WIDTH_MIN}
+              max={COLLAPSED_WIDTH_MAX}
+              step={1}
+              value={form.collapsedWidth}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                const normalized = normalizeCollapsedWidthInput(nextValue);
+                if (normalized === null) {
+                  return;
+                }
+
+                updateField('collapsedWidth', String(normalized));
+                if (normalizedCollapsedReminderWidth < normalized + 24) {
+                  const adjustedReminder = Math.min(COLLAPSED_REMINDER_WIDTH_MAX, normalized + 24);
+                  updateField('collapsedReminderWidth', String(adjustedReminder));
+                  previewOverlayLayout({
+                    collapsedWidth: normalized,
+                    collapsedReminderWidth: adjustedReminder,
+                  });
+                  return;
+                }
+
+                previewOverlayLayout({ collapsedWidth: normalized });
+              }}
+            />
+          </label>
+          <div className="range-meta">
+            <span>{COLLAPSED_WIDTH_MIN}px</span>
+            <strong>{normalizedCollapsedWidth}px</strong>
+            <span>{COLLAPSED_WIDTH_MAX}px</span>
+          </div>
+          <label>
+            Reminder width (px)
+            <input
+              type="range"
+              min={reminderWidthMin}
+              max={COLLAPSED_REMINDER_WIDTH_MAX}
+              step={1}
+              value={normalizedCollapsedReminderWidth}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                const normalized = normalizeRangeInput(
+                  nextValue,
+                  reminderWidthMin,
+                  COLLAPSED_REMINDER_WIDTH_MAX,
+                );
+                if (normalized === null) {
+                  return;
+                }
+
+                updateField('collapsedReminderWidth', String(normalized));
+                previewOverlayLayout({ collapsedReminderWidth: normalized });
+              }}
+            />
+          </label>
+          <div className="range-meta">
+            <span>{reminderWidthMin}px</span>
+            <strong>{normalizedCollapsedReminderWidth}px</strong>
+            <span>{COLLAPSED_REMINDER_WIDTH_MAX}px</span>
+          </div>
+          <label>
+            Collapsed height (px)
+            <input
+              type="range"
+              min={COLLAPSED_HEIGHT_MIN}
+              max={COLLAPSED_HEIGHT_MAX}
+              step={1}
+              value={form.collapsedHeight}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                const normalized = normalizeCollapsedHeightInput(nextValue);
+                if (normalized === null) {
+                  return;
+                }
+
+                updateField('collapsedHeight', String(normalized));
+                previewOverlayLayout({ collapsedHeight: normalized });
+              }}
+            />
+          </label>
+          <div className="range-meta">
+            <span>{COLLAPSED_HEIGHT_MIN}px</span>
+            <strong>{normalizedCollapsedHeight}px</strong>
+            <span>{COLLAPSED_HEIGHT_MAX}px</span>
+          </div>
+          <label>
+            Content offset Y (px)
+            <input
+              type="range"
+              min={COLLAPSED_CONTENT_OFFSET_Y_MIN}
+              max={COLLAPSED_CONTENT_OFFSET_Y_MAX}
+              step={1}
+              value={form.collapsedContentOffsetY}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                const normalized = normalizeCollapsedContentOffsetYInput(nextValue);
+                if (normalized === null) {
+                  return;
+                }
+
+                updateField('collapsedContentOffsetY', String(normalized));
+                previewOverlayLayout({ collapsedContentOffsetY: normalized });
+              }}
+            />
+          </label>
+          <div className="range-meta">
+            <span>{COLLAPSED_CONTENT_OFFSET_Y_MIN}px</span>
+            <strong>{normalizedCollapsedContentOffsetY}px</strong>
+            <span>{COLLAPSED_CONTENT_OFFSET_Y_MAX}px</span>
+          </div>
+          <small>
+            Live preview Textream-style: slider ini langsung mengubah posisi, lebar, tinggi, dan
+            posisi konten notch tanpa perlu Save.
+          </small>
           <label className="checkbox-row">
             <input
               type="checkbox"
