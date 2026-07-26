@@ -293,25 +293,52 @@ export class LocationService {
     cityQuery: string,
     countryCode?: string,
   ): Promise<OpenMeteoGeocodeResult | undefined> {
-    let primary: OpenMeteoGeocodeResult | undefined;
-    try {
-      primary = await this.geocodeCityFromOpenMeteo(cityQuery, countryCode);
-    } catch {
-      primary = undefined;
-    }
-    if (primary) {
-      return primary;
+    const queries = this.getGeocodingQueries(cityQuery);
+
+    for (const query of queries) {
+      try {
+        const result = await this.geocodeCityFromOpenMeteo(query, countryCode);
+        if (result) {
+          return result;
+        }
+      } catch {
+        // Try the next provider query, including the normalized city name.
+      }
     }
 
     if (countryCode) {
-      try {
-        return await this.geocodeCityFromOpenMeteo(cityQuery);
-      } catch {
-        return undefined;
+      for (const query of queries) {
+        try {
+          const result = await this.geocodeCityFromOpenMeteo(query);
+          if (result) {
+            return result;
+          }
+        } catch {
+          // Fall through to the built-in city fallback.
+        }
       }
     }
 
     return undefined;
+  }
+
+  private getGeocodingQueries(city: string): string[] {
+    const original = city.trim();
+    const withoutAdministrativePrefix = this.normalizeCityQuery(original);
+    const queries = [original];
+
+    if (
+      withoutAdministrativePrefix.length >= 2 &&
+      withoutAdministrativePrefix.toLocaleLowerCase() !== original.toLocaleLowerCase()
+    ) {
+      queries.push(withoutAdministrativePrefix);
+    }
+
+    return [...new Set(queries)];
+  }
+
+  private normalizeCityQuery(city: string): string {
+    return city.replace(/^(?:kota|kabupaten|kab)\s+/i, '').trim();
   }
 
   private async geocodeCityFromOpenMeteo(
@@ -341,7 +368,7 @@ export class LocationService {
   }
 
   private getFallbackGeocode(city: string, countryCode?: string): GeocodeCityResult | null {
-    const normalizedCity = city.trim().toLowerCase();
+    const normalizedCity = this.normalizeCityQuery(city).toLowerCase();
     const normalizedCountryCode = countryCode?.trim().toUpperCase();
     const match = LocationService.FALLBACK_CITY_ENTRIES.find((entry) => {
       if (entry.city.toLowerCase() !== normalizedCity) {
